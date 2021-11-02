@@ -18,8 +18,85 @@ struct file_operations fops = {
 	.open = scull_open,
 	.owner= THIS_MODULE,
 	.read = scull_read ,
-	.write = scull_write
+	.write = scull_write ,
+	.unlocked_ioctl = scull_ioctl,
 };
+
+long scull_ioctl(struct file *fp,unsigned int cmd,unsigned long arg) {
+
+	int err=0,tmp;
+	int retval=0;
+
+	//extract type and bitfields
+	if(_IOC_TYPE(cmd)!=SCULL_IOC_MAGIC) return -ENOTTY;
+	if(_IOC_NR(cmd)>SCULL_IOC_NR) return -ENOTTY;
+
+
+	//Check if the user address is accessible for write/read 
+	//command using access_ok. Get direction and check.
+	if(_IOC_DIR(cmd)&_IOC_READ)
+		err=!access_ok((void* __user)arg,_IOC_SIZE(cmd));
+	else if (_IOC_DIR(cmd) & _IOC_WRITE)
+		err=!access_ok((void* __user)arg,_IOC_SIZE(cmd));
+
+	if(err)
+		return -EFAULT;
+
+	switch(cmd) {
+
+		case SCULL_IOCRESET:
+			scull_quantum=SCULL_QUANTUM;
+			scull_qset=SCULL_QSET;
+			//printk("ioctl retval SCULL_IOCRESET %d\n",retval);
+			break;
+		case SCULL_IOCSQUANTUM:
+			if(!capable(CAP_SYS_ADMIN))
+				return -EPERM;
+			retval=__get_user(scull_quantum,(int __user*)arg);
+			//printk("ioctl retval SCULL_IOCSQUANTUM %d\n",scull_quantum);
+			break;
+		case SCULL_IOCTQUANTUM:
+			if(!capable(CAP_SYS_ADMIN))
+				return -EPERM;
+			retval=arg;
+			scull_quantum=arg;
+			//printk("ioctl retval SCULL_IOCTQUANTUM %d\n",scull_quantum);
+			break;
+		case SCULL_IOCGQUANTUM:
+			retval=__put_user(scull_quantum,(int __user*)arg);
+			//printk("ioctl retval SCULL_IOCGQUANTUM %d\n",retval);
+			break;
+		case SCULL_IOCQQUANTUM:
+			retval=scull_quantum;
+			//printk("ioctl retval SCULL_IOCQQUANTUM %d\n",retval);
+			break;
+		case SCULL_IOCXQUANTUM:
+			if(!capable(CAP_SYS_ADMIN))
+				return -EPERM;
+			tmp=scull_quantum;
+			//printk("ioctl retval SCULL_IOCXQUANTUM %d\n",retval);
+			retval=__get_user(scull_quantum,(int __user*)arg);
+			if(retval==0)
+				retval=__put_user(tmp,(int __user*)arg);
+			break;
+		case SCULL_IOCHQUANTUM:
+			if(!capable(CAP_SYS_ADMIN))
+				return -EPERM;
+			//printk("ioctl retval SCULL_IOCHQUANTUM %d\n",retval);
+			tmp = scull_quantum;
+			scull_quantum = arg;
+			return tmp;
+			break;
+		default:
+			printk("ioctl retval default %d\n",retval);
+			return -ENOTTY;
+	}
+	printk("ioctl retval %d scull_quantum %d\n",retval,scull_quantum);
+	return retval;
+}
+
+
+
 
 static struct scull_qset* scull_follow(struct scull_dev* dev,int n) {
      struct scull_qset *data=dev->data;
